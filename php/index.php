@@ -9,6 +9,6 @@ $cryption = new Crypt("./static/encrypt.jpg", 'decrypt', './static/decrypt.jpg',
 // 返回种子字符串
 // echo $cryption->seeder();
 // 返回base64图像
-// echo $cryption->dataUrl();
+echo $cryption->dataUrl();
 // 保存图像到文件
-$cryption->local();
+// $cryption->local();

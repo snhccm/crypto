@@ -1,174 +1,136 @@
 <?php
 require 'random.php';
 
-// 获取图像的unit数据
-function imageToUnitData($file){
-  // 读取图像的数据
-  $temp = getimagesize($file);
-
-  // print_r($temp);
-
-  switch ($temp['mime']) {
-    case 'image/gif':
-      $image = imagecreatefromgif($file);
-      break;
-    case 'image/jpeg':
-      $image = imagecreatefromjpeg($file);
-      break;
-    case 'image/png':
-      $image = imagecreatefrompng($file);
-      break;
-    default:
-      return false;
-      break;
-  }
-
-  // 去掉图像8倍像素的边界尺寸
-  $size[0] = floor($temp[0] / 8) * 8;
-  $size[1] = floor($temp[1] / 8) * 8;
-
-  // 创建图片尺寸宽度$size[0]， 高度为$size[1]的图像
-  $canvas = imagecreatetruecolor($size[0], $size[1]);
-  $color = imagecolorallocate($canvas, 255, 255, 255);
-  // 定义填充画布
-  imagefill($canvas, 0, 0, $color);
-  // 把原图像拷贝到新图像 不能使用imagecopyresized 会改变图像质量，多用于生成缩略图
-  imagecopy($canvas, $image, 0, 0, 0, 0, $size[0], $size[1]);
-
-  $unit = array();
-
-  for ($y = 0; $y < imagesy($canvas); $y++) {
-    for ($x = 0; $x < imagesx($canvas); $x++) {
-      // 取得颜色像素的索引值
-      $unit[] = imagecolorat($canvas, $x, $y);
-
-      // $index = imagecolorat($canvas, $x, $y);
-      // $colors = imagecolorsforindex($canvas, $index);
-      // print_r($colors);
-      // [r, g, b, a]
-    }
-  }
-  // 返回重置后的图像对像
-  return array('data' => $unit, 'width' => $size[0], 'height' => $size[1], 'mime' => $temp['mime']);
-}
-
-// 传入RGBA数据构建图像对像
-function createImageForUnitData($data){
-  //生成真彩图片
-  $canvas = imagecreatetruecolor($data['width'],$data['height']);
-  $color = imagecolorallocate($canvas, 255, 255, 255);
-  //填充背景-从左上角开始填充
-  imagefill($canvas, 0, 0, $color);
-
-  foreach ($data['data'] as $k => $v) {
-    $r = ($v >> 16) & 0xFF;
-    $g = ($v >> 8) & 0xFF;
-    $b = $v & 0xFF;
-
-    $point = imagecolorallocate($canvas, $r, $g, $b);
-
-    // 计算坐标位
-    $x = $k % $data['width'];
-    $y = floor($k / $data['width']);
-
-    // 根据颜色点绘制图案
-    ImageFilledRectangle($canvas, $x, $y, $x,$y, $point);
-  }
-
-  return array('width' => $data['width'], 'height' => $data['height'], 'data' => $canvas, 'mime' => $data['mime']);
-}
-
 class codec{
-  private $srcPath;
-  private $unitdata;
+  private $resource;
   private $seed;
 
-  function __construct($srcPath, $seed){
-    $this->srcPath = $srcPath;
+  function __construct($resource, $seed){
+    $this->resource = $resource;
     $this->seed = $seed;
-    $this->unitdata = imageToUnitData($srcPath);
-
-    // print_r($this->unitdata);
-    // exit();
   }
 
-  // 图像加密
-  public function encrypt(){
-    $image = $this->unitdata;
-    // 根据随机函数得到随机序列
-    $random = new random($this->seed);
+  private function getImageBlock(){
+      list($width, $height) = getimagesize($this->resource);
 
-    $index = $random->sequence($image['width'] * $image['height']);
-    // print_r($list);
+      $count['width'] = floor($width / 8);
+      $count['height'] = floor($height / 8);
 
-    // 根据随机序列置乱图像像素
-    foreach ($image['data'] as $key => $value) {
-      $block[$index[$key]] =$value;
-    }
+      $block = [];
 
-    // $dist = array();
-    // for ($y = 0; $y < $image['height']; $y++) {
-    //   for ($x = 0; $x < $image['width']; $x++) {
-    //     // 提取随机数--在种子不变的情况下随机数的顺序是不变的
-    //
-    //     // 计算目的地图像的坐标
-    //     $nx = $index[$x * $y] % 86;
-    //     $ny = floor($index[$x * $y] / 688);
-    //
-    //     // 执行回调函数
-    //     // $this->block($dist,$x,$y,$image['data'],$nx,$ny);
-    //
-    //
-    //
-    //
-    //     $dist[] = $image['data'][];
-    //   }
-    // }
-    //
-    // print_r($dist);
-    // exit();
-
-    // 生成加密后的图像对像
-    $image['data'] = $block;
-    return createImageForUnitData($image);
-  }
-
-  public function block($dist,$dx, $dy, $src, $sx, $sy){
-    $ids = ($dy * 688 + $dx) * 8;
-    $iss = ($sy * 688 + $sx);
-
-    $temp = array();
-    for ($y = 0; $y < 8; $y++) {
-      for ($i = 0; $i < 8; $i++) {
-        // echo $iss+$i."\n\r";
-        $dist[$ids + $i] = $src[$iss + $i];
+      // 计算每个块的坐标
+      for($i=0; $i< $count['height']; $i++){
+          // 计算y的坐标
+          for($j=0; $j < $count['width']; $j++){
+              $block[] = [
+                  'x' => $j * 8,
+                  'y' => $i * 8
+              ];
+          }
       }
-      $ids += 688;
-      $iss += 688;
-    }
-
-    return $dist;
+      return array('width'=>$count['width'] * 8, 'height'=>$count['height'] * 8, 'data'=>$block);
   }
 
-  // 图像解密
-  public function decrypt(){
-    $image = $this->unitdata;
-    // 根据随机函数得到随机序列
+  // 创建新的图像
+  private function mergeBlock($random){
+      $temp = getimagesize($this->resource);
+
+      switch ($temp['mime']) {
+        case 'image/gif':
+          $origin_data = imagecreatefromgif($this->resource);
+          break;
+        case 'image/jpeg':
+          $origin_data = imagecreatefromjpeg($this->resource);
+          break;
+        case 'image/png':
+          $origin_data = imagecreatefrompng($this->resource);
+          break;
+        default:
+          return false;
+          break;
+      }
+
+      $canvas = imagecreatetruecolor(floor($temp[0] / 8) * 8, floor($temp[1] / 8) * 8);
+      $color = imagecolorallocate($canvas, 255, 255, 255); // 为真彩色画布创建白色背景，再设置为透明
+      imagefill($canvas, 0, 0, $color);
+      // 把原始图像的信息拷贝全部拷贝到新图像上
+      // imagecopyresampled($canvas, $origin_data, 0, 0, 0, 0, $width, $height, $width, $height);
+
+      foreach($random as $v){
+          // $thumb = ImageCreateTrueColor(8, 8);
+          // imagecopy($thumb, $origin_data, 0, 0, $v['x'], $v['y'], 8, 8);
+
+          // 循环合并8X8的图像到画布上
+          // print_r($v);
+          imagecopymerge($canvas, $origin_data, $v['nx'], $v['ny'], $v['x'], $v['y'], 8, 8, 100);
+      }
+
+      return $canvas;
+  }
+
+  public function encrypt(){
+    $image = $this->getImageBlock();
+
+    $count['width'] = floor($image['width'] / 8);
+    $count['height'] = floor($image['height'] / 8);
+
     $random = new random($this->seed);
+    $length = $count['width'] * $count['height'];
 
-    $index = $random->sequence($image['width'] * $image['height']);
-    // print_r($list);
+    $index = $random->sequence($length);
 
-    // 根据随机序列置乱图像像素
-    foreach ($image['data'] as $key => $value) {
-      $block[$key] =$image['data'][$index[$key]];
+    $origin_block = $image['data'];
+
+    $random_block = [];
+
+    for ($i = 0; $i < count($index); $i++) {
+      $random_block[] = [
+        'x' => $origin_block[$i]['x'],
+        'y' => $origin_block[$i]['y'],
+        // 根据随机数定位取坐标，
+        'nx' => $origin_block[$index[$i]]['x'] ,
+        'ny' => $origin_block[$index[$i]]['y'],
+      ];
+    }
+    // return $random_block;
+    return $this->mergeBlock($random_block);
+
+    // imagepng($canvas, $destination);
+  }
+
+  public function decrypt(){
+    $image = $this->getImageBlock();
+
+    $count['width'] = floor($image['width'] / 8);
+    $count['height'] = floor($image['height'] / 8);
+
+    $random = new random($this->seed);
+    $length = $count['width'] * $count['height'];
+
+    $index = $random->sequence($length);
+    $index = array_flip($index);
+
+    $origin_block = $image['data'];
+
+    $random_block = [];
+
+    for ($i = 0; $i < count($index); $i++) {
+      $random_block[] = [
+        'x' => $origin_block[$i]['x'],
+        'y' => $origin_block[$i]['y'],
+        // 根据随机数定位取坐标，
+        'nx' => $origin_block[$index[$i]]['x'],
+        'ny' => $origin_block[$index[$i]]['y'],
+      ];
     }
 
-    // 生成加密后的图像对像
-    $image['data'] = $block;
-    return createImageForUnitData($image);
+    // return $random_block;
+    return $this->mergeBlock($random_block);
+
+    // imagejpeg($canvas, $destination, 100);
   }
 }
+
 
 // 图片加密解密操作方法
 class Crypt{
@@ -198,8 +160,6 @@ class Crypt{
     if( $this->method == 'decrypt' && empty($this->seed)){
       return "Invalid seed string, please check!";
     }
-
-
   }
 
   public function seeder(){
@@ -215,7 +175,7 @@ class Crypt{
       $_temp = $codec->decrypt();
     }
 
-    return base64_encode($_temp['data']);
+    return base64_encode($_temp);
   }
 
   public function local(){
@@ -227,19 +187,15 @@ class Crypt{
       $_temp = $codec->decrypt();
     }
 
-    // print_r($_temp);
-    // imagepng($_temp['data'], $this->dstPath);
-    // exit();
-
     switch ($_temp['mime']) {
       case 'image/gif':
-        imagegif($_temp['data'], $this->dstPath);
+        imagegif($_temp, $this->dstPath);
         break;
       case 'image/png':
-        imagepng($_temp['data'], $this->dstPath);
+        imagepng($_temp, $this->dstPath);
         break;
       default:
-        imagejpeg($_temp['data'], $this->dstPath, 100);
+        imagejpeg($_temp, $this->dstPath, 100);
         break;
     }
   }
