@@ -4,10 +4,15 @@ require 'random.php';
 class codec{
   private $resource;
   private $seed;
+  private $mime;
 
   function __construct($resource, $seed){
     $this->resource = $resource;
     $this->seed = $seed;
+
+    $image = getimagesize($this->resource);
+
+    $this->mime = $image['mime'];
   }
 
   private function getImageBlock(){
@@ -92,10 +97,8 @@ class codec{
         'ny' => $origin_block[$index[$i]]['y'],
       ];
     }
-    // return $random_block;
+    // r返回加密后的图像对像
     return $this->mergeBlock($random_block);
-
-    // imagepng($canvas, $destination);
   }
 
   public function decrypt(){
@@ -124,10 +127,13 @@ class codec{
       ];
     }
 
-    // return $random_block;
+    // 返回解密后的图像对像
     return $this->mergeBlock($random_block);
+  }
 
-    // imagejpeg($canvas, $destination, 100);
+  // 返回图片的类型
+  public function mime(){
+    return $this->mime();
   }
 }
 
@@ -175,7 +181,12 @@ class Crypt{
       $_temp = $codec->decrypt();
     }
 
-    return base64_encode($_temp);
+    ob_start();
+    imagepng($_temp);
+    $image_data = ob_get_contents();
+    ob_end_clean();
+
+    return "data:image/png;base64," .base64_encode($image_data);
   }
 
   public function local(){
@@ -187,7 +198,7 @@ class Crypt{
       $_temp = $codec->decrypt();
     }
 
-    switch ($_temp['mime']) {
+    switch ($codec->mime()) {
       case 'image/gif':
         imagegif($_temp, $this->dstPath);
         break;
