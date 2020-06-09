@@ -166,6 +166,13 @@ class Crypt{
     if( $this->method == 'decrypt' && empty($this->seed)){
       return "Invalid seed string, please check!";
     }
+
+    if(empty($this->dstPath)){
+      $path = exploade('.',$this->srcPath);
+      $path[0] = $path[0]."_encrypt";
+      
+      $this->dstPath = implode('.',$path);
+    }
   }
 
   public function seeder(){
